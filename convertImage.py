@@ -16,15 +16,15 @@ parser.add_argument("i",
 parser.add_argument("-r",
                     type=int,
                     help="Minimum bin size",
-                    default=4096)
+                    default=2048)
 parser.add_argument("-o",
                     type=float,
                     help="Overlap between fft bins. Increases notes per second with higher numbers. range 0.0 to 0.99.",
-                    default=0.70)
+                    default=0.0)
 parser.add_argument("-t",
                     type=int,
                     help="Number of midi tracks.",
-                    default=31)
+                    default=2)
 parser.add_argument("-m",
                     type=int,
                     help="How much to add to the multiplier when the minimum bin size is reached",
@@ -51,8 +51,8 @@ parser.add_argument("--ascii-res",
                     default='60,60')
 parser.add_argument("--video-res",
                     type=str,
-                    help="Resolution the video is scaled to before being processed. default=480,180",
-                    default='480,180')
+                    help="Resolution the video is scaled to before being processed. default=480,135",
+                    default='480,135')
 
 
 args = parser.parse_args()
@@ -141,6 +141,7 @@ if __name__ == "__main__":
     for i in range(tracks):
         midi.tracks.append(mido.MidiTrack())
     
+
     midi.tracks[0].append(mido.MetaMessage('set_tempo', tempo = mido.bpm2tempo(bpm)))
 
     midi.tracks[0].append(mido.Message('control_change', control = 121))
