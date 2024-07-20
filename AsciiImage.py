@@ -2,7 +2,6 @@ from scipy.signal import convolve2d
 from scipy.ndimage import gaussian_filter
 import numpy as np 
 from PIL import Image
-from matplotlib import pyplot as plt
 import cv2
 import time
 
