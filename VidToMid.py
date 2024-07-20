@@ -185,7 +185,7 @@ if __name__ == "__main__":
 
 
     video_interval = (1/frame_rate)
-    time_until_video = 0
+    time_until_video = 0 #   +5#temporary so tmidity will work please
     video_frame = 0
     prev_note = 0
     while sum(done) < note_count:
