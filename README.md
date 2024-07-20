@@ -1,10 +1,10 @@
 ```
 VidToMid.py:
-usage: VidToMid.py i [args]
+usage: VidToMid.py input [args]
 Generate a MIDI file from WAV
 
 positional arguments:
-  i                     File name
+  input                 File name
 
 options:
   -h, --help            show this help message and exit
