@@ -1,3 +1,6 @@
+To start:
+`pip install -r requirements.txt`
+
 ```
 VidToMid.py:
 usage: VidToMid.py input [args]
