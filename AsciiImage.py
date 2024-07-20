@@ -31,16 +31,20 @@ def luminance_to_char(value):
 def asciify(image_in, width, height):
     image = image_in
 
-    if image.width > image.height:
-        dims = (height, round(height * (image.height / image.width)))
-    else:
-        dims = (round(width * (image.width / image.height)), width)
-    
+    ratio_1 = width  / image.width
+    ratio_2 = height / image.height
 
-    np_image = np.array(image_in.convert('F'))
+    if ratio_1 < ratio_2:
+        dims = (round(image.width * ratio_1), round(image_in.height * ratio_1))
+    else:
+        dims = (round(image.width * ratio_2), round(image_in.height * ratio_2))
+
+    print(dims, width, height, image.size)
+
+    np_image = np.array(image.convert('F'))
 
     gaussian_clip = (np_image) - gaussian_filter(np_image, 1)
-    average = np.sum(abs(gaussian_clip)) / (image.width * image.height) * 1
+    average = np.sum(abs(gaussian_clip)) / (image.width * image.height) * 1.5
     gaussian_clip = gaussian_clip > average
 
     sobelX = convolve2d(gaussian_clip, [[1,2,1],[0,0,0],[-1,-2,-1]], mode='same')
@@ -116,14 +120,23 @@ if __name__ == '__main__':
     import mido
     import sys
 
-    frames, frame_count, frame_rate = ascii_video(sys.argv[1], (60,60), (480,180))
+    try:
+        sys.argv[2]
 
-    midi = mido.MidiFile()
-    midi.tracks.append(mido.MidiTrack())
+        frames, frame_count, frame_rate = ascii_video(sys.argv[1], (60,60), (480,180))
 
-    for frame in frames:
-        midi.tracks[0].append(mido.MetaMessage('lyrics', text=frame))
-        midi.tracks[0].append(mido.Message('note_on', note=0, time=0))
-        midi.tracks[0].append(mido.Message('note_off', note=0, time=80))
+        midi = mido.MidiFile()
+        midi.tracks.append(mido.MidiTrack())
 
-    midi.save(sys.argv[1] + '.mid')
+        for frame in frames:
+            midi.tracks[0].append(mido.MetaMessage('lyrics', text=frame))
+            midi.tracks[0].append(mido.Message('note_on', note=0, time=0))
+            midi.tracks[0].append(mido.Message('note_off', note=0, time=80))
+        
+        midi.save(sys.argv[1] + '.mid')
+
+    except:
+        image = Image.open(sys.argv[1])
+        image = image.resize((image.width, round(image.height/2)))
+
+        print(asciify(image, 100, 100))
