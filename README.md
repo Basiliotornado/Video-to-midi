@@ -1,3 +1,4 @@
+```
 VidToMid.py:
 usage: VidToMid.py i [args]
 Generate a MIDI file from WAV
@@ -21,3 +22,4 @@ options:
 AsciiImage.py:
 AsciiImage.asciify(image_in, width, height) 
 AsciiImage.ascii_video(filename, ascii_size: tuple, video_size: tuple, silent=False):
+```
