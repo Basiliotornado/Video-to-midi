@@ -38,8 +38,6 @@ def asciify(image_in, width, height):
     else:
         dims = (round(image.width * ratio_2), round(image_in.height * ratio_2))
 
-    print(dims, width, height, image.size)
-
     np_image = np.array(image.convert('F'))
 
     gaussian_clip = (np_image) - gaussian_filter(np_image, 1)
