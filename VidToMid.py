@@ -1,34 +1,39 @@
 from scipy.signal import spectrogram, get_window
 from scipy.io.wavfile import read
-from numpy import rot90, flipud, frombuffer
+import scipy.fft
+from numpy import rot90, flipud, frombuffer, absolute, array
 import mido
 import argparse
 from multiprocessing import Pool, cpu_count
 from subprocess import run
+from tqdm import tqdm
 import AsciiImage
-
 
 parser = argparse.ArgumentParser(description='Generate a MIDI file from WAV')
 
 parser.add_argument("i",
                     type=str,
                     help="File name ")
-parser.add_argument("-r",
+parser.add_argument("-b",
                     type=int,
-                    help="Minimum bin size",
-                    default=2048)
+                    help="b in y = mx+b. Works like minimum bin size.",
+                    default=128)
+parser.add_argument("-m",
+                    type=int,
+                    help="m in y = mx+b.",
+                    default=32)
 parser.add_argument("-o",
                     type=float,
                     help="Overlap between fft bins. Increases notes per second with higher numbers. range 0.0 to 0.99.",
-                    default=0.5)
+                    default=0.50)
 parser.add_argument("-t",
                     type=int,
                     help="Number of midi tracks.",
-                    default=2)
-parser.add_argument("-m",
+                    default=31)
+parser.add_argument("--mult",
                     type=int,
                     help="How much to add to the multiplier when the minimum bin size is reached",
-                    default=8)
+                    default=24)
 parser.add_argument("-n",
                     type=int,
                     help="Note count.",
@@ -45,6 +50,10 @@ parser.add_argument("--bpm",
                     type=int,
                     help="Bpm of the midi",
                     default=120)
+parser.add_argument("--visualize",
+                    type=bool,
+                    help="Visualize the minimum bin size.",
+                    default=False)
 parser.add_argument("--ascii-res",
                     type=str,
                     help="Resolution of output ascii. default=60,60",
@@ -54,23 +63,23 @@ parser.add_argument("--video-res",
                     help="Resolution the video is scaled to before being processed. default=480,135",
                     default='480,135')
 
-
 args = parser.parse_args()
 
 if args.i: file = args.i
 else: file = input("File name: ")
 
-minimum_bin_size = args.r
+b = args.b
+m = args.m
 overlap = args.o
 tracks = args.t
-multiplier = args.m
+multiplier = args.mult
 note_count = args.n
 threads = args.threads
 ppqn = args.ppqn
 bpm = args.bpm
+visualize_mininum_bin_size = args.visualize # lmao
 ascii_size = tuple(int(i) for i in args.ascii_res.split(','))
-video_res = tuple(int(i) for i in args.video_res.split(',')) #Hate this but sue me
-
+video_res = tuple(int(i) for i in args.video_res.split(','))
 
 file_list = file.split(".")
 file_name = "".join(file_list[:-1])
@@ -99,48 +108,82 @@ dataL = data[:,0]
 def frequency_from_key(key):
     return 2 ** ((key - 69) / 12) * 440
 
+def minimum_r_line(note):
+    return (m * (128 - note)) + b
+
+def spectrogram(data, samplerate, window, nperseg, overlap):
+
+    step = round(nperseg - nperseg * overlap)
+    spec = []
+    for i in range(0, len(data), step):
+        sample = data[i:i+nperseg]
+        if len(sample) != nperseg: continue
+
+        sample = sample * window
+        fft = absolute(scipy.fft.fft(sample))
+        fft = fft[:round(len(fft) / 2)]
+        spec.append(fft / nperseg)
+
+    dt = step / samplerate
+    return  dt, spec
+
 def generate_spectrograms(note):
-    mult = multiplier if multiplier > 1 else 1#multiplier if multiplier > 1 else 1
+    mult = multiplier
     track = []
 
     binSize = round(samplerate / frequency_from_key(note) * mult)
+    minimum_bin_size = minimum_r_line(note)
     while binSize < minimum_bin_size:
-        mult += 8
+        mult += multiplier
         binSize = round(samplerate / frequency_from_key(note) * mult)
 
-    f, t, spectrogramL = spectrogram(dataL, samplerate, window=get_window("hann", binSize), nperseg=binSize, noverlap=round(binSize*overlap), mode='magnitude')
-    _, _, spectrogramR = spectrogram(dataR, samplerate, window=get_window("hann", binSize), nperseg=binSize, noverlap=round(binSize*overlap), mode='magnitude')
-
-    spectrogramL = flipud(rot90(spectrogramL))
-    spectrogramR = flipud(rot90(spectrogramR))
+    dt, spectrogramL = spectrogram(dataL, samplerate, window=get_window("hann", binSize), nperseg=binSize, overlap=overlap)
+    __, spectrogramR = spectrogram(dataR, samplerate, window=get_window("hann", binSize), nperseg=binSize, overlap=overlap)
 
     L = [spectrogramL[i][mult] for i in range(len(spectrogramL))]
     R = [spectrogramR[i][mult] for i in range(len(spectrogramR))]
 
-    dt = t[1] - t[0]
-
     largest = max([max(L),max(R)])
 
-    print(f"Spectrogram {note} done")
-    return {"f":f, "dt":dt, "max":largest, "L":L, "R":R}
+    return {"dt":dt, "max":largest, "L":L, "R":R}
 
-def get_velocity(amp,mult,largest):
-    vel = int((amp ** 0.5 / largest)*12800 * mult)
+def get_velocity(amp):
+    vel = int((amp ** 0.5) * 128)
 
     if vel < 0:   vel = 0
     if vel > 127: vel = 127
 
     return vel
 
+if visualize_mininum_bin_size:
+    from matplotlib import pyplot as plt
+
+    debug_graph_target = []
+    debug_graph_actual = []
+
+    mult = multiplier
+    for i in range(note_count):
+        binSize = round(samplerate / frequency_from_key(i) * mult)
+        minimum_bin_size = minimum_r_line(i)
+        while binSize < minimum_bin_size:
+            mult += multiplier
+            binSize = round(samplerate / frequency_from_key(i) * mult)
+
+        debug_graph_target.append(minimum_bin_size)
+        debug_graph_actual.append(binSize)
+
+    plt.plot(debug_graph_actual)
+    plt.plot(debug_graph_target)
+    plt.show()
+
+
 if __name__ == "__main__":
-    
     midi = mido.MidiFile(type = 1)
 
     midi.ticks_per_beat = ppqn
 
     for i in range(tracks):
         midi.tracks.append(mido.MidiTrack())
-    
 
     midi.tracks[0].append(mido.MetaMessage('set_tempo', tempo = mido.bpm2tempo(bpm)))
 
@@ -149,37 +192,30 @@ if __name__ == "__main__":
     midi.tracks[0].append(mido.Message('control_change', channel = 0, control = 10, value = 0))
     midi.tracks[0].append(mido.Message('control_change', channel = 1, control = 10, value = 127))
 
-    delta_times = [[0] for i in range(note_count)]
-
-
     with Pool(round(threads)) as p:
-        spectrograms = p.map(generate_spectrograms, range(note_count))
+        spectrograms = list(tqdm(p.imap(generate_spectrograms, range(note_count)), desc='Generating spectrograms', total=note_count))
 
+    total_notes = 0
     largest = 0
-    prev_track = []
+    delta_times = [0] * note_count
     for i in range(len(spectrograms)):
-        delta_times[i] = spectrograms[i]["dt"]
+        spectrogram = spectrograms[i]
+        delta_times[i] = spectrogram["dt"]
 
-        if spectrograms[i]["max"] > largest:
-            largest = spectrograms[i]["max"]
+        total_notes += len(spectrogram['L'])
 
-        note_mapped = i / 128
-        note_mult = (note_mapped ** 1.8 * (3 - 2 * note_mapped)) / 1.25 + 0.2
+        if spectrogram["max"] > largest:
+            largest = spectrogram["max"]
 
-        velL = get_velocity(spectrograms[i]["L"].pop(0), note_mult, 3564.1987)
-        velR = get_velocity(spectrograms[i]["R"].pop(0), note_mult, 3564.1987) #
+    for spectrogram in tqdm(range(len(spectrograms)),desc='Normalizing spectrogram'):
+        for i in range(len(spectrograms[spectrogram]['L'])):
+            spectrograms[spectrogram]['L'][i] /= largest
+            spectrograms[spectrogram]['R'][i] /= largest
 
-        track = int(velR/(96/tracks) + 1)
-        if track > tracks-1: track = tracks-1
-
-        prev_track.append(track)
-        midi.tracks[track].append(mido.Message('note_on', channel = 0, note=i, velocity=velL))
-        midi.tracks[0].append(mido.Message('note_on', channel = 1, note=i, velocity=velR))
-
-    next_times = [delta_times[i] for i in range(len(delta_times))]
-    track_offset = [0 for i in range(tracks)]
-    done = [0 for i in range(note_count)]
-
+    next_times = [(i / (1 - overlap)) / 2 for i in delta_times]
+    track_offset = [0] * tracks
+    done = [0] * note_count
+    note_index = [0] * note_count
 
     frames, frame_count, frame_rate = AsciiImage.ascii_video(file, ascii_size, video_res)
 
@@ -187,8 +223,10 @@ if __name__ == "__main__":
     video_interval = (1/frame_rate)
     time_until_video = 0 #   +5#temporary so tmidity will work please
     video_frame = 0
-    prev_note = 0
+
+    progress_bar = tqdm(total=total_notes)
     while sum(done) < note_count:
+
         time = min(next_times)
         note = next_times.index(time)
 
@@ -206,23 +244,16 @@ if __name__ == "__main__":
 
         next_times[note] = delta_times[note]
 
-        if len(spectrograms[note]["L"]) == 0:
+        if note_index[note] >= len(spectrograms[note]["L"]):
             next_times[note] += 9999
             done[note] = 1
-            print(f"{note} Done")
             spectrograms[note]["L"].append(0)
-            spectrograms[note]["R"].append(0) # make sure both channels finish
+            spectrograms[note]["R"].append(0) # make sure all notes finish
 
         time = round(time * ppqn * (bpm / 60))
-        
-        note_mult = (-(note / 128 * 0.75 - 1) ** 2 + 1.06)
-        if note_mult < 0.4: note_mult = 0.4
 
-        note_mapped = note / 128
-        note_mult = (note_mapped ** 1.8 * (3 - 2 * note_mapped)) / 1.25 + 0.2
-
-        velL = get_velocity(spectrograms[note]["L"].pop(0), note_mult, largest)
-        velR = get_velocity(spectrograms[note]["R"].pop(0), note_mult, largest)
+        velL = get_velocity(spectrograms[note]["L"][note_index[note]])
+        velR = get_velocity(spectrograms[note]["R"][note_index[note]])
 
         track = int(velL/(82/tracks) + 1)
         if track > tracks-1: track = tracks-1
@@ -233,15 +264,11 @@ if __name__ == "__main__":
         midi.tracks[0].append(mido.Message('note_on', channel = 1, note=note, velocity=velR))
         midi.tracks[track].append(mido.Message('note_on', channel = 0, note=note, velocity=velL))
 
-
         for i in range(tracks):
             track_offset[i] += time
         track_offset[track] = 0
-
-
-        prev_track[note] = track
-        prev_note = note
-
+        note_index[note] += 1
+        progress_bar.update()
     print("\nExporting")
     midi.save(file_name + ".mid")
     print("\nDone!")
